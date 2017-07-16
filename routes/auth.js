@@ -10,7 +10,7 @@ module.exports = function(users) {
 
 		
 		// res.send(users.signIn());
-		res.render('../routes/auth/index', { title: 'Login' });
+		res.render('../SocketUser/views/auth/index', { title: 'Login' });
 	});
 	router.get('/googleUrl', function(req, res, next) {
 
@@ -29,7 +29,6 @@ module.exports = function(users) {
 				console.log("error",err);
 				res.status(500).render({error: err});
 				return;
-			// throw err
 			};
 
             users.getUserProfile(token,function(err, userResponse) {
@@ -37,24 +36,13 @@ module.exports = function(users) {
                     console.log("error", err);				
 					res.status(500).render("error",{error: err});
 					return;
-                    // throw err;
                 }
-
-				// res.cookie("authentication", response.secret, {maxAge:900000, httpOnly: true});
 				req.session.user = {id: userResponse.id, display_name: userResponse.display_name};
 				if (!res.headersSent) {
-    				res.redirect("/lobbies");
+    				res.redirect("/");
 				}
             })
-
-			// res.cookie("oauthCode",response, {maxAge:9000000, httpOnly:true});
-
-			// res.send(response);
-			// res.send("something lame");
 		});
-
-		// console.log(req.query);
-		// res.send("something happend");
 	})
 
 

@@ -1,0 +1,19 @@
+<img src="images/sign-in-with-google.png" id="sign-in">
+
+<script type="text/javascript">
+
+	var url;
+	$.ajax({
+		url:"auth/googleUrl",
+		success:function(response) {
+			url=response;
+		}
+	});
+
+	$("#sign-in").on("click", function(){
+		if (url !== undefined) {
+			window.location.replace(url);
+			// window.open(url,"Google sign in", "width:500px,height:700px")
+		}
+	})
+</script>

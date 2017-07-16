@@ -263,7 +263,7 @@ module.exports = function(mysqlPool, config) {
 			} else {
 				var user = cachedUsers[req.session.user.id];
 				
-				res.redirect("/lobbies");
+				res.redirect("/");
 
 				next();
 			}
