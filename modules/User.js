@@ -1,69 +1,59 @@
-
+var util = require("util");
 var randomstring = require("randomstring");
 
 module.exports = function(mysqlPool, config, oauth2Client) {
 
+    class User {
+        /**
+         * User constructor
+         * 
+         * @param {int} id 
+         * @param {string} name 
+         * @param {any} tokens 
+         */
+        constructor(id, name, tokens) {
+            this.id = id;
+            this.name = name;
+            this.tokens = tokens;   
 
-    /**
-     * User constructor
-     * 
-     * @param {int} id 
-     * @param {string} display_name 
-     * @param {any} tokens 
-     */
-    function User(id, display_name,tokens) {
-        this.id = id;
-        this.display_name = display_name;
-        this.tokens = tokens;  
-        // this.socketAuth = null; 
+    //     // this.socket = null;
 
-        this.socket = null;
+        this.sockets = [];
 
         // create a new array so it is not shared among instances
         this.groups = [];
-    }
-
-    User.prototype = {
+        }
         
+        getInfo() {
+            return {
+                id: this.id,
+                name: this.name, 
+            }
+        }
+
         /**
          * Update user name
          * 
          * @param {string} newName 
          * @param {function(err, success)} callBack 
          */
-        updateName: function(newName, callBack) {
+        updateName(newName, callBack) {
             // escape the name to avoid js injection
             mysqlPool.getConnection((err, connection) => {
-                connection.query('update users set display_name = ? where id = ?', [newName, this.id], (err) => {
+                connection.query('update users set name = ? where id = ?', [newName, this.id], (err) => {
                     connection.release();
                     if (err) {
                         callBack(err, false);
                     }
                     var x = this;
-                    this.display_name = newName;
+                    this.name = newName;
                     //this.updateCache();
                     callBack(null, true);
                 })
 
             })
-        },
+        }
         
-        /**
-         * Generate a socket token
-         * 
-         * @returns {String} socketToken
-         */
-        generateSocketAuth: function() {
-            var auth = randomstring.generate(100);
-            this.socketAuth = {
-                auth: auth,
-                // take the time at the current location, to make sockets time out after a certain amount of time.
-                valid_until: Date.now() + 5000
-            };
-            return auth;
-        },
-        
-
 
 
         /**
@@ -71,22 +61,93 @@ module.exports = function(mysqlPool, config, oauth2Client) {
          * 
          * @param {string} event 
          * @param {any} data 
+         * @param {Object} filter
          */
-        emit: function(event, data) {
-            if (this.socket) {
-                this.socket.emit(event, data);
-            }
-        },
+        emit(event, data, filter) {
+            this.filteredSocketsDo(filter, function(socket) {
+                socket.emit(event,data);
+            })
+        }
 
+
+        /**
+         * 
+         * 
+         * @param {Object} filter 
+         * @param {Object} action(socket)
+         */
+        filteredSocketsDo(filter, action) {
+            for(var i = this.sockets.length - 1; 0 <= i; i--) {
+                var socket = this.sockets[i];
+                if (this.matchesFilter(filter, socket)) {
+                    action(socket);
+                }
+            }
+        }
+
+
+        /**
+         * 
+         * 
+         * @param {Object} filter 
+         * @param {Socket} socket 
+         * @returns 
+         */
+        matchesFilter(filter, socket) {
+            if (filter) {
+                for (var filterKey in filter) {
+                    var filterValue = filter[filterKey];
+                    var socketRuleValue = socket[filterKey]; 
+                    if(Array.isArray(socketRuleValue)) {
+                        if (Array.isArray(filterValue)) {
+                            var found = false;
+                            for (var i = 0; i < filterValue.length; i++) {
+                                var filterElement = filterValue[i];
+                                if (socketRuleValue.indexOf(filterElement) !== -1) {
+                                    found = true;
+                                }
+                            }
+                            if (!found) {
+                                return false;
+                            }
+                        } else {
+                            if (socketRuleValue.indexOf(filterValue) === -1) {
+                                return false;
+                            }
+                        }
+                    } else {
+                        if (Array.isArray(filterValue)) {
+                            if (filterValue.indexOf(socketRuleValue) === -1) {
+                                return false;
+                            }
+                        } else {
+                            if (socketRuleValue != filterValue) {
+                                return false;
+                            }
+                        }
+                        // if it is a string value then 
+                        // return filterValue === socket[filterKey];
+                    }
+                    
+                }
+            }
+            return true;
+            
+        }
 
         /**
          * Attach socket to user
          * Allows to send messages to user.
          * 
-         * @param {Socket} socket 
+         * @param {Socket} socket
+         * @param {Object} filters
          */
-        attachSocket: function(socket) {
-            this.socket = socket;
+        attachSocket(socket, filters) {
+
+            // this.socket = socket;
+            if (filters) {                
+                socket = Object.assign(socket, filters);
+            }
 
             this.groups.forEach(function(group) {
                 // give every group a chance to re attach their socket listeners
@@ -98,19 +159,22 @@ module.exports = function(mysqlPool, config, oauth2Client) {
                     this.socket = null;
                 }
             })
-        },
+        }
 
-        groups: [],
+        hasSocket(socket) {
+            return this.sockets.indexOf(socket) !== -1;
+        }
 
-        addToGroup: function(group) {
+
+        addToGroup(group) {
             if(this.groups.indexOf(group) === -1) {
                 this.groups.push(group);
                 // create a two way relationship to the group
                 group.addUser(this);
             }
-        },
+        }
 
-        removeFromGroup: function(group) {
+        removeFromGroup(group) {
             var index = this.groups.indexOf(group);
             console.log("groups", this.groups);
             if(index != -1) {
@@ -118,10 +182,21 @@ module.exports = function(mysqlPool, config, oauth2Client) {
                 // end the two way relationship to the group
                 group.removeUser(this);
             }
-        },
+        }
 
+        bindEvent(eventName, event, filter) {
+            this.filteredSocketsDo(filter, function(socket) {
+                socket.on(eventName, event);
+            })
+        }
 
+        unbindEvent(eventName, event, filter) {
+            this.filteredSocketsDo(false, function(socket) {
+                socket.removeListener(event)
+            })
+        }
     }
+
 
     return User;
 }
