@@ -16,12 +16,12 @@ module.exports = function(mysqlPool, config, oauth2Client) {
             this.name = name;
             this.tokens = tokens;   
 
-    //     // this.socket = null;
+            // this.socket = null;
 
-        this.sockets = [];
+            this.sockets = [];
 
-        // create a new array so it is not shared among instances
-        this.groups = [];
+            // create a new array so it is not shared among instances
+            this.groups = [];
         }
         
         getInfo() {
@@ -29,6 +29,7 @@ module.exports = function(mysqlPool, config, oauth2Client) {
                 id: this.id,
                 name: this.name, 
             }
+            
         }
 
         /**
@@ -96,8 +97,16 @@ module.exports = function(mysqlPool, config, oauth2Client) {
         matchesFilter(filter, socket) {
             if (filter) {
                 for (var filterKey in filter) {
+                    if (socket.filter) {
+                        // if the socket does not have a filter then assume it does not match the filter
+                        // and there is anything on the filter
+                        return false;
+                    }
+                    var socketRuleValue = null;
                     var filterValue = filter[filterKey];
-                    var socketRuleValue = socket[filterKey]; 
+                    if (socket.filter) {
+                        socketRuleValue = socket.filter[filterKey];
+                    }
                     if(Array.isArray(socketRuleValue)) {
                         if (Array.isArray(filterValue)) {
                             var found = false;
@@ -142,12 +151,52 @@ module.exports = function(mysqlPool, config, oauth2Client) {
          * @param {Socket} socket
          * @param {Object} filters
          */
-        attachSocket(socket, filters) {
+        attachSocket(socket, filters = {}) {
 
             // this.socket = socket;
-            if (filters) {                
-                socket = Object.assign(socket, filters);
+            // if (filters) {
+            //     socket = Object.assign(socket, filters);
+            // }
+            socket.filters = filters
+
+
+            socket.updateFilter = (filter) => {
+                var oldFilter = socket.filter;
+                
+                this.groups.forEach(function(group) {
+                    var matchesNew = false;
+                    var matchesOld = false;
+                    if(this.matchesFilter(group.filter, {filter: oldFilter})) {
+                        // check if it was accepted by the old filter
+                        matchesOld = true;
+                    }
+                    if(this.matchesFilter(group.filter, {filter: filter})) {
+                        // check if it is accepted by the new filter
+                        matchesNew = true;
+                    }
+
+                    if(matchesNew && !matchesOld) {
+                        // the group has to be added to the socket
+                        for (eventName in group.userBoundFunctions) {
+                            let boundFunction = group.userBoundFunctions[eventName][this.id];
+
+                            socket.on(boundFunction);
+                        }
+                    }
+                    if(matchesOld && !matchesNew) {
+                        // if it matched the old filter but no longer matches the new filter remove the boundFunctions
+                        for (eventName in group.userBoundFunctions) {
+                            let boundFunction = group.userBoundFunctions[eventName][this.id];
+
+                            socket.off(boundFunction);
+                        }
+                    }
+                    
+                }, this);
+
             }
+
+            this.sockets.push(socket);
 
             this.groups.forEach(function(group) {
                 // give every group a chance to re attach their socket listeners
@@ -155,9 +204,15 @@ module.exports = function(mysqlPool, config, oauth2Client) {
             }, this);
 
             socket.on('disconnect', () => {
-                if (this.socket === socket) {
-                    this.socket = null;
+
+                // when the socket disconnects remove it from the list
+                var index = this.sockets.indexOf(socket);
+                if (index != -1) {
+                    this.sockets.splice(index, 1);
                 }
+                // if (this.socket === socket) {
+                //     // this.socket = null;
+                // }
             })
         }
 

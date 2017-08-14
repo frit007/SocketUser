@@ -119,7 +119,7 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 
 				// check if the user already exists before creating a new one
 				if (this.cachedUsers[profileInfo.id] !== undefined) {
-					this.cachedUsers.token = token;
+					this.cachedUsers[profileInfo.id].token = token;
 					return this.cachedUsers[profileInfo.id];
 				}
 
@@ -132,6 +132,8 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 				return user;
 				
 			}
+
+			
 
 			if (!token) {
 				callback("no_token")
@@ -206,8 +208,15 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 			});
 		}
 
-		getUserWithId(userId) {
-			return this.cachedUsers[userId];
+		getUser(user_id, callback) {
+			if(this.cachedUsers[user_id]) {
+				return callback(null, this.cachedUsers[user_id]);
+			}
+
+			mysqlPool.query("select * from users where id = ?",
+			 [user_id], (err, result) => {
+				 callback(err, result[0]);
+			})
 		}
 		
 		updateProfile(token, data, callback) {
@@ -265,6 +274,24 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 		 * @param {any} next 
 		 */
 		pickupSession(req, res, next) {
+			if(config.no_network) {
+				// for development without network highly insecure and limiting
+				// TODO implement a more safe implementation
+				// anybody could impersonate user 1 at the moment 
+				// if they manage to set no_network on the config object
+				mysqlPool.query("SELECT * from users where id = 1", (err, users) => {
+					if(err) {next();return}
+					var userRow = users[0];
+					if(userRow) {
+						var user = new User(userRow.id, userRow.name, "no_tokens");
+						this.cachedUsers[user.id] = user;
+						req.session.user = user;
+					}
+					res.redirect("/");
+				})
+				return;
+			}
+
 			if (typeof req.session.user === "undefined") {
 				next();
 			} else {

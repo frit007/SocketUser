@@ -21,11 +21,13 @@ var Group = Group || (function() {
          * @param {User} user 
          */
         addUser(user) {
-            if(this.users.indexOf(user) === -1) {
-                this.users.push(user);
-                // create a two way relationship to the user
-                user.addToGroup(this);
+            if(this.containsUser(user)) {
+                // if the user is already added then do nothing 
+                return;
             }
+            this.users.push(user);
+            // create a two way relationship to the user
+            user.addToGroup(this);
 
             for	(var key in this.boundFunctions) {
                 // var boundFunction = this.boundFunctions[key];
@@ -52,7 +54,7 @@ var Group = Group || (function() {
             
             var userBoundFunction = this.userBoundFunctions[eventName][user.id]
             
-            if (userBoundFunction) {
+            if (!userBoundFunction) {
                 // check if the function already exists and if doesn't create it     
                 userBoundFunction = boundFunction.bind(user);
                 
@@ -190,6 +192,7 @@ var Group = Group || (function() {
          */
         emit(event, data, filter) {
             if (typeof filter == "undefined") {
+                // default the filter it was not defined
                 filter = this.filter;
             }
             this.users.forEach(function(user) {
