@@ -97,7 +97,7 @@ module.exports = function(mysqlPool, config, oauth2Client) {
         matchesFilter(filter, socket) {
             if (filter) {
                 for (var filterKey in filter) {
-                    if (socket.filter) {
+                    if (!socket.filter) {
                         // if the socket does not have a filter then assume it does not match the filter
                         // and there is anything on the filter
                         return false;
@@ -157,11 +157,14 @@ module.exports = function(mysqlPool, config, oauth2Client) {
             // if (filters) {
             //     socket = Object.assign(socket, filters);
             // }
-            socket.filters = filters
+
+            socket.filter = filters;
 
 
             socket.updateFilter = (filter) => {
                 var oldFilter = socket.filter;
+                socket.filter = filter;
+
                 
                 this.groups.forEach(function(group) {
                     var matchesNew = false;
@@ -170,6 +173,7 @@ module.exports = function(mysqlPool, config, oauth2Client) {
                         // check if it was accepted by the old filter
                         matchesOld = true;
                     }
+                    
                     if(this.matchesFilter(group.filter, {filter: filter})) {
                         // check if it is accepted by the new filter
                         matchesNew = true;
@@ -193,7 +197,7 @@ module.exports = function(mysqlPool, config, oauth2Client) {
                     }
                     
                 }, this);
-
+                
             }
 
             this.sockets.push(socket);
