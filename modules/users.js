@@ -9,7 +9,7 @@ var plus = google.plus('v1');
 var cachedUsers = {};
 
 // requires node js
-module.exports = function(mysqlPool, config) {
+module.exports = function(mysqlPool, sessionMiddleware, config) {
 
 	var oauth2Client = new OAuth2(
 		config.googleOauth.clientId,
@@ -176,7 +176,7 @@ module.exports = function(mysqlPool, config) {
 							// if the user profile does not yet exist create it
 							connection.query('insert into users(display_name,google_id) values(?,?)', 
 							[profileInfo.display_name,profileInfo.google_id],
-							function(err,insertResults,fields) {
+							function(err, insertResults, fields) {
 								connection.release();
 								if (err) {
 									callback(err);
@@ -232,11 +232,10 @@ module.exports = function(mysqlPool, config) {
 
 		requireLogin: function(req, res, next) {
 			
-			console.log(req.session.user);
-
 			if (typeof req.session.user === "undefined") {
 				if (req.method == "GET") {
-					res.redirect("/auth");				
+					res.redirect("/auth");
+					// next();
 				} else {
 					res.send(400, "Not signed in")
 				}
@@ -257,15 +256,12 @@ module.exports = function(mysqlPool, config) {
 		 * @param {any} next 
 		 */
 		pickupSession: function(req, res, next) {
-
 			if (typeof req.session.user === "undefined") {
 				next();
 			} else {
 				var user = cachedUsers[req.session.user.id];
 				
 				res.redirect("/");
-
-				next();
 			}
 		},
 
@@ -283,8 +279,17 @@ module.exports = function(mysqlPool, config) {
 			}
 
 
-		}
+		},
 
+		/**
+		 * Get user session for a socket 
+		 * 
+		 * @param {Socket} socket 
+		 * @param {callback} next 
+		 */
+		socketSession: function(socket, next) {
+			sessionMiddleware(socket.request, socket.request.res, next);
+		}
 
 	}
 
