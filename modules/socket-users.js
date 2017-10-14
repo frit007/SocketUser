@@ -1,12 +1,14 @@
 var google = require('googleapis');
 var OAuth2 = google.auth.OAuth2;
 
+var es6bindall = require("es6bindall");
+
 var randomstring = require("randomstring");
 
 var plus = google.plus('v1');
 
 // stores user profiles where the key is the client cookie
-var cachedUsers = {};
+
 
 // requires node js
 module.exports = function(mysqlPool, sessionMiddleware, config) {
@@ -36,19 +38,26 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 		// Optional property that passes state parameters to redirect URI
 		// state: { foo: 'bar' }
 	});
-
-	var usersModule = {
-		signIn: function(name, password) {
+	class SocketUsers {
+		constructor() {
+			this.cachedUsers = {};
+			
+			// 
+			es6bindall(this, ["requireLogin", "pickupSession", "requireSocketLogin"])
+		}
+		
+		signIn(name, password) {
 			// return "Simple";
 			return url;
-		},
+		}
+		
 		/**
 		 * Get access from google
 		 * 
 		 * @param {string/User} userToken 
 		 * @param {function} callback 
 		 */
-		getToken: function(userToken, callback) {
+		getToken(userToken, callback) {
 			// console.log();
 			if (userToken instanceof User) {
 				userToken = userToken.tokens
@@ -74,11 +83,11 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 
 
 			oauth2Client.getToken(userToken, callback)
-		},
+		}
 
-		updateCache: function(user) {
-			cachedUsers[user.secret] = user;
-		},
+		updateCache(user) {
+			this.cachedUsers[user.secret] = user;
+		}
 
 		/**
 		 * Get user from socketAuthToken
@@ -87,15 +96,15 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 		 * @param {string} socketAuthToken 
 		 * @returns {User} user
 		 */
-		getUserFromSocketAuthToken: function(socketAuthToken) {
-			for(var key in cachedUsers) {
-				var user = cachedUsers[key];
+		getUserFromSocketAuthToken(socketAuthToken) {
+			for(var key in this.cachedUsers) {
+				var user = this.cachedUsers[key];
 				if(user.authenticateSocket(socketAuthToken)) {
 					return user;
 				}
 			}
 			return null;
-		},
+		}
 
 		/**
 		 * Get user from database who belong to a google id
@@ -104,25 +113,27 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 		 * @param {function} callback 
 		 * @returns 
 		 */
-		getUserProfile: function(token, callback) {
+		getUserProfile(token, callback) {
 
-			createCachedUserFromProfileInfo = function(profileInfo) {
+			const createCachedUserFromProfileInfo = (profileInfo) => {
 
 				// check if the user already exists before creating a new one
-				if (cachedUsers[profileInfo.id] !== undefined) {
-					cachedUsers.token = token;
-					return cachedUsers[profileInfo.id];
+				if (this.cachedUsers[profileInfo.id] !== undefined) {
+					this.cachedUsers[profileInfo.id].token = token;
+					return this.cachedUsers[profileInfo.id];
 				}
 
 				// var secret = randomstring.generate(200);
-				var user = new User(profileInfo.id, profileInfo.display_name, token);
+				var user = new User(profileInfo.id, profileInfo.name, token);
 				// user.secret = secret;
 
-				cachedUsers[user.id] = user;
+				this.cachedUsers[user.id] = user;
 
 				return user;
 				
 			}
+
+			
 
 			if (!token) {
 				callback("no_token")
@@ -153,20 +164,20 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 						callback(err);
 						return;
 					}
-					connection.query('SELECT display_name,id from users as u where u.google_id = ?', [googleData.id], function(err, mysqlResult, fields) {
+					connection.query('SELECT name,id from users as u where u.google_id = ?', [googleData.id], function(err, mysqlResult, fields) {
 						if (err) {
 							connection.release();
 							callback(err);
 							return;
 						}
 						var profileInfo = {
-							display_name: googleData.displayName,
+							name: googleData.displayName,
 							google_id: googleData.id,
 							id: null,
 						}
 						if (mysqlResult.length == 1) {
 							// get the display name if it exists
-							profileInfo.display_name = mysqlResult[0].display_name;
+							profileInfo.name = mysqlResult[0].name;
 							
 							profileInfo.id = mysqlResult[0].id;
 
@@ -174,9 +185,9 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 							callback(null, createCachedUserFromProfileInfo(profileInfo));
 						} else {
 							// if the user profile does not yet exist create it
-							connection.query('insert into users(display_name,google_id) values(?,?)', 
-							[profileInfo.display_name,profileInfo.google_id],
-							function(err, insertResults, fields) {
+							connection.query('insert into users(name,google_id) values(?,?)', 
+							[profileInfo.name,profileInfo.google_id],
+							function(err,insertResults,fields) {
 								connection.release();
 								if (err) {
 									callback(err);
@@ -195,15 +206,22 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 
 
 			});
-		},
+		}
 
-		getUserWithId: function(userId) {
-			return cachedUsers[userId];
-		},
+		getUser(user_id, callback) {
+			if(this.cachedUsers[user_id]) {
+				return callback(null, this.cachedUsers[user_id]);
+			}
+
+			mysqlPool.query("select * from users where id = ?",
+			 [user_id], (err, result) => {
+				 callback(err, result[0]);
+			})
+		}
 		
-		updateProfile: function(token, data, callback) {
+		updateProfile(token, data, callback) {
 
-		},
+		}
 
 		/**
 		 * Loads users into cache if they are not already in it
@@ -211,42 +229,42 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 		 * @param {[number,...]} userIds 
 		 * @param {function} callback 
 		 */
-		loadUsersIntoCache: function(userIds, callback) {
-			mysqlPool.query("SELECT * from users where id in (?)", [userIds], function(err, rows) {
+		loadUsersIntoCache(userIds, callback) {
+			mysqlPool.query("SELECT * from users where id in (?)", [userIds], (err, rows) => {
 				if (err) {
 					return callback(err);
 				}
 				var users = {};
 				for (var i = 0; i < rows.length; i++) {
 					var row = rows[i];
-					if(typeof cachedUsers[row.id] === "undefined") {
-						var user = new User(row.id, row.display_name);
-						cachedUsers[user.id] = user;
+					if(typeof this.cachedUsers[row.id] === "undefined") {
+						var user = new User(row.id, row.name);
+						this.cachedUsers[user.id] = user;
 					}
 					// push the cached user into an array so they can be returned
-					users[row.id] = cachedUsers[row.id];
+					users[row.id] = this.cachedUsers[row.id];
 				}
 				callback(null, users);
 			});
-		},
+		}
 
-		requireLogin: function(req, res, next) {
+		requireLogin(req, res, next) {
 			
 			if (typeof req.session.user === "undefined") {
 				if (req.method == "GET") {
 					res.redirect("/auth");
 					// next();
 				} else {
-					res.send(400, "Not signed in")
+					res.status(400).send("Not signed in")
 				}
 				return;
 			}
-			var user = cachedUsers[req.session.user.id];
+			var user = this.cachedUsers[req.session.user.id];
 			
 			req.user = user;
 
 			next();
-		},
+		}
 
 		/**
 		 * Make sure the user is not able to log in twice.
@@ -255,22 +273,40 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 		 * @param {any} res 
 		 * @param {any} next 
 		 */
-		pickupSession: function(req, res, next) {
+		pickupSession(req, res, next) {
+			if(config.no_network) {
+				// for development without network highly insecure and limiting
+				// TODO implement a more safe implementation
+				// anybody could impersonate user 1 at the moment 
+				// if they manage to set no_network on the config object
+				mysqlPool.query("SELECT * from users where id = 1", (err, users) => {
+					if(err) {next();return}
+					var userRow = users[0];
+					if(userRow) {
+						var user = new User(userRow.id, userRow.name, "no_tokens");
+						this.cachedUsers[user.id] = user;
+						req.session.user = user;
+					}
+					res.redirect("/");
+				})
+				return;
+			}
+
 			if (typeof req.session.user === "undefined") {
 				next();
 			} else {
-				var user = cachedUsers[req.session.user.id];
+				var user = this.cachedUsers[req.session.user.id];
 				
 				res.redirect("/");
 			}
-		},
+		}
 
-		requireSocketLogin: function(socket, next) {
+		requireSocketLogin(socket, next) {
 					
 			if (typeof socket.request.session.user === "undefined") {
 				next("Not signed in", false);
 			} else {
-				var user = cachedUsers[socket.request.session.user.id];
+				var user = this.cachedUsers[socket.request.session.user.id];
 				socket.user = user;
 
 				user.attachSocket(socket);
@@ -287,11 +323,10 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 		 * @param {Socket} socket 
 		 * @param {callback} next 
 		 */
-		socketSession: function(socket, next) {
+		socketSession(socket, next) {
 			sessionMiddleware(socket.request, socket.request.res, next);
 		}
-
 	}
 
-	return usersModule;
+	return new SocketUsers();
 }
