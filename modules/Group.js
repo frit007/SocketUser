@@ -192,10 +192,7 @@ var Group = Group || (function() {
          */
         emit(event, data, filter) {
             if (typeof filter == "undefined") {
-<<<<<<< HEAD
-=======
                 // default the filter it was not defined
->>>>>>> c2938d6dcf52c6b34cee8d1240bd594695049471
                 filter = this.filter;
             }
             this.users.forEach(function(user) {

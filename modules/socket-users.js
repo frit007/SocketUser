@@ -302,7 +302,7 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 		}
 
 		requireSocketLogin(socket, next) {
-					
+
 			if (typeof socket.request.session.user === "undefined") {
 				next("Not signed in", false);
 			} else {
@@ -315,7 +315,7 @@ module.exports = function(mysqlPool, sessionMiddleware, config) {
 			}
 
 
-		},
+		}
 
 		/**
 		 * Get user session for a socket 
